@@ -10,7 +10,7 @@ import {StreamIssueRepo} from '../../StreamIssueRepo';
 import {RemoteGitHubHeaderEntity} from '../../../Library/Type/RemoteGitHubV3/RemoteGitHubHeaderEntity';
 
 const PER_PAGE = 100;
-const MAX_SEARCHING_COUNT = 1000;
+const MAX_SEARCHING_COUNT = 10000;
 
 export class StreamClient {
   private readonly id: number;
@@ -23,8 +23,14 @@ export class StreamClient {
   private nextSearchedAt: string;
   private page: number = 1;
   private hasError: boolean = false;
+  private dateQuery: string;
 
-  constructor(id: number, name: string, queries: string[], searchedAt: string | null) {
+  constructor(
+    id: number,
+    name: string,
+    queries: string[],
+    searchedAt: string | null
+  ) {
     this.id = id;
     this.name = name;
     this.queries = queries;
@@ -33,12 +39,14 @@ export class StreamClient {
     this.startedAt = DateUtil.localToUTCString(new Date());
   }
 
-  async exec(): Promise<{fulfillRateLimit?: boolean}> {
+  async exec(): Promise<{ fulfillRateLimit?: boolean }> {
     // エラーがあっても処理は行う
     // 理由: 初期サーチ中にエラーが出た場合、初期サーチが終わらなくなるから
     // todo: もっといい方法あるかも？
     if (this.hasError) {
-      console.warn(`this stream client has previous error. id = ${this.id}, name = ${this.name}`);
+      console.warn(
+        `this stream client has previous error. id = ${this.id}, name = ${this.name}`
+      );
       // return {};
     }
 
@@ -48,7 +56,10 @@ export class StreamClient {
     // クエリがない場合、検索したとみなして終了する。
     // 例えばsubscription streamは有効になってすぐはクエリがないので、すぐに検索終わったとみなす
     if (!this.queries.length) {
-      const {error} = await StreamRepo.updateSearchedAt(this.id, this.searchedAt || this.startedAt);
+      const { error } = await StreamRepo.updateSearchedAt(
+        this.id,
+        this.searchedAt || this.startedAt
+      );
       if (error) {
         console.error(error);
         this.hasError = true;
@@ -60,7 +71,7 @@ export class StreamClient {
     }
 
     // inject `updated:>=`
-    const queries = this.queries.map(query =>{
+    const queries = this.queries.map((query) => {
       if (this.searchedAt && this.isUsingSearchedAt()) {
         return `${query} updated:>=${this.searchedAt}`;
       } else {
@@ -78,13 +89,18 @@ export class StreamClient {
     // それと、大抵の場合2クエリ以下になると予想しているため、許容範囲とした。
     let maxSearchingCountPerQuery: number;
     if (this.queries.length >= 3) {
-      maxSearchingCountPerQuery = Math.floor(MAX_SEARCHING_COUNT / this.queries.length);
+      maxSearchingCountPerQuery = Math.floor(
+        MAX_SEARCHING_COUNT / this.queries.length
+      );
     } else {
       maxSearchingCountPerQuery = MAX_SEARCHING_COUNT;
     }
 
     // search
-    const {error, finishAll, githubHeader} = await this.search(queries, maxSearchingCountPerQuery);
+    const { error, finishAll, githubHeader } = await this.search(
+      queries,
+      maxSearchingCountPerQuery
+    );
     if (error) {
       console.error(error);
       this.hasError = true;
@@ -94,7 +110,10 @@ export class StreamClient {
     // すべて取得してqueryを一周したときにsearchedAtを更新する
     if (finishAll) {
       // note: 初回読み込みのときはsearchedAtが無いので、stream開始時刻を入れることにする
-      const {error} = await StreamRepo.updateSearchedAt(this.id, this.searchedAt || this.startedAt);
+      const { error } = await StreamRepo.updateSearchedAt(
+        this.id,
+        this.searchedAt || this.startedAt
+      );
       if (error) {
         console.error(error);
         this.hasError = true;
@@ -109,7 +128,7 @@ export class StreamClient {
       this.isFirstSearching = false;
     }
 
-    return {fulfillRateLimit: githubHeader?.fulfillRateLimit};
+    return { fulfillRateLimit: githubHeader?.fulfillRateLimit };
   }
 
   getId() {
@@ -136,65 +155,105 @@ export class StreamClient {
     return issues;
   }
 
-  private async search(queries: string[], maxSearchingCount: number): Promise<{finishAll?: boolean; error?: Error; githubHeader?: RemoteGitHubHeaderEntity}> {
+  private async search(
+    queries: string[],
+    maxSearchingCount: number
+  ): Promise<{
+    finishAll?: boolean;
+    error?: Error;
+    githubHeader?: RemoteGitHubHeaderEntity;
+  }> {
     const query = queries[this.queryIndex];
     const github = UserPrefRepo.getPref().github;
-    const client = new GitHubSearchClient(github.accessToken, github.host, github.pathPrefix, github.https);
-    const {error, issues: allIssues, totalCount, githubHeader} = await client.search(query, this.page, PER_PAGE);
-    if (error) return {error};
+    const client = new GitHubSearchClient(
+      github.accessToken,
+      github.host,
+      github.pathPrefix,
+      github.https
+    );
+    const {
+      error,
+      issues: allIssues,
+      totalCount,
+      githubHeader,
+      lastDate,
+    } = await client.search(query, this.page, PER_PAGE, this.dateQuery);
+    if (error) return { error };
 
     // ローカルのissueより新しいものだけにする
-    const {error: e0, targetIssues} = await this.targetIssues(allIssues);
-    if (e0) return {error: e0};
+    const { error: e0, targetIssues } = await this.targetIssues(allIssues);
+    if (e0) return { error: e0 };
 
     // sub-class filter
     const issues = await this.filter(targetIssues);
 
     // await this.correctUpdatedAt(issues);
 
-    const {error: e2} = await this.injectV4Properties(issues, githubHeader.gheVersion);
-    if (e2) return {error: e2};
+    const { error: e2 } = await this.injectV4Properties(
+      issues,
+      githubHeader.gheVersion
+    );
+    if (e2) return { error: e2 };
 
     // 最初の検索のときはかなり過去にさかのぼって検索するため、更新が古いissueについては既読扱いとしてしまう
-    const {error: e1, updatedIssueIds} = await IssueRepo.createBulk(this.id, issues, this.isFirstSearching);
-    if (e1) return {error: e1};
+    const { error: e1, updatedIssueIds } = await IssueRepo.createBulk(
+      this.id,
+      issues,
+      this.isFirstSearching
+    );
+    if (e1) return { error: e1 };
 
     if (updatedIssueIds.length) {
       console.log(`[updated] stream: ${this.id}, name: ${this.name}, page: ${this.page}, totalCount: ${totalCount}, updatedIssues: ${updatedIssueIds.length}`);
       StreamEvent.emitUpdateStreamIssues(this.id, updatedIssueIds);
     }
 
+    let isOver1000Searching = false;
     const searchingCount = this.page * PER_PAGE;
     if (searchingCount < maxSearchingCount && searchingCount < totalCount) {
       this.page++;
+      if (searchingCount >= 1000) {
+        this.dateQuery = lastDate;
+        this.page = 1;
+        isOver1000Searching = true;
+      }
     } else {
+      this.dateQuery = null;
       this.page = 1;
       this.queryIndex = (this.queryIndex + 1) % queries.length;
     }
 
     // 最初のpageに戻りかつ最初のqueryになった場合、全て読み込んだとする
-    const finishAll = this.page === 1 && this.queryIndex === 0;
-    return {finishAll, githubHeader};
+    const finishAll =
+      this.page === 1 && this.queryIndex === 0 && !isOver1000Searching;
+    return { finishAll, githubHeader };
   }
 
   // 以下の条件のどちらかを満たすものだけを対象とする(無駄なリクエストをしないため)
   // - まだこのstreamににもづいていない
   // - ローカルのissueより新しい
-  private async targetIssues(issues: RemoteIssueEntity[]): Promise<{error?: Error; targetIssues?: RemoteIssueEntity[]}> {
-    const issueIds = issues.map(issue => issue.id);
+  private async targetIssues(
+    issues: RemoteIssueEntity[]
+  ): Promise<{ error?: Error; targetIssues?: RemoteIssueEntity[] }> {
+    const issueIds = issues.map((issue) => issue.id);
 
-    const {error: e1, issues: currentIssues} = await IssueRepo.getIssues(issueIds);
-    if (e1) return {error: e1};
+    const { error: e1, issues: currentIssues } = await IssueRepo.getIssues(
+      issueIds
+    );
+    if (e1) return { error: e1 };
 
-    const {error: e2, issueIds: relationIssueIds} = await StreamIssueRepo.getIssueIds(this.id);
-    if (e2) return {error: e2};
+    const { error: e2, issueIds: relationIssueIds } =
+      await StreamIssueRepo.getIssueIds(this.id);
+    if (e2) return { error: e2 };
 
-    const targetIssues =  issues.filter(issue => {
+    const targetIssues = issues.filter((issue) => {
       // まだ紐付いていないということは新規ということ
       if (!relationIssueIds.includes(issue.id)) return true;
 
       // ローカルより新しいということは更新されたということ
-      const currentIssue = currentIssues.find(currentIssue => currentIssue.id === issue.id);
+      const currentIssue = currentIssues.find(
+        (currentIssue) => currentIssue.id === issue.id
+      );
       if (currentIssue && issue.updated_at > currentIssue.updated_at) {
         return true;
       }
@@ -202,11 +261,14 @@ export class StreamClient {
       return false;
     });
 
-    return {targetIssues};
+    return { targetIssues };
   }
 
   // v3(REST)の結果に、v4(GraphQL)の結果を追加する
-  private async injectV4Properties(issues: RemoteIssueEntity[], gheVersion: string): Promise<{error?: Error}> {
+  private async injectV4Properties(
+    issues: RemoteIssueEntity[],
+    gheVersion: string
+  ): Promise<{ error?: Error }> {
     if (!issues.length) return {};
 
     // get v4 issues

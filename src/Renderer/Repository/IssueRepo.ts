@@ -16,43 +16,57 @@ class _IssueRepo {
     for (const issue of issues) issue.value = JSON.parse(issue.value as any);
   }
 
-  async getIssues(issueIds: number[]): Promise<{error?: Error; issues?: IssueEntity[]}> {
-    const {error, rows: issues} = await DB.select<IssueEntity>(`select * from issues where id in (${issueIds.join(',')})`);
-    if (error) return {error};
+  async getIssues(
+    issueIds: number[]
+  ): Promise<{ error?: Error; issues?: IssueEntity[] }> {
+    const { error, rows: issues } = await DB.select<IssueEntity>(
+      `select * from issues where id in (${issueIds.join(",")})`
+    );
+    if (error) return { error };
 
     await this.relations(issues);
-    return {issues};
+    return { issues };
   }
 
-  async getIssue(issueId: number): Promise<{error?: Error; issue?: IssueEntity}> {
-    const {error, issues} = await this.getIssues([issueId]);
-    if (error) return {error};
+  async getIssue(
+    issueId: number
+  ): Promise<{ error?: Error; issue?: IssueEntity }> {
+    const { error, issues } = await this.getIssues([issueId]);
+    if (error) return { error };
 
-    return {issue: issues[0]};
+    return { issue: issues[0] };
   }
 
-  async getIssueByIssueNumber(repo: string, issueNumber: number): Promise<{error?: Error; issue?: IssueEntity}> {
-    const {error, row: issue} = await DB.selectSingle<IssueEntity>(`select * from issues where repo = ? and number = ?`, [repo, issueNumber]);
-    if (error) return {error};
-    if (!issue) return {issue: null};
+  async getIssueByIssueNumber(
+    repo: string,
+    issueNumber: number
+  ): Promise<{ error?: Error; issue?: IssueEntity }> {
+    const { error, row: issue } = await DB.selectSingle<IssueEntity>(
+      `select * from issues where repo = ? and number = ?`,
+      [repo, issueNumber]
+    );
+    if (error) return { error };
+    if (!issue) return { issue: null };
 
     await this.relations([issue]);
-    return {issue};
+    return { issue };
   }
 
   async getIssuesInStream(queryStreamId: number | null, defaultFilter: string, userFilter: string, page: number = 0, perPage = 30): Promise<{error?: Error; issues?: IssueEntity[]; totalCount?: number; hasNextPage?: boolean}> {
     const filter = `${userFilter} ${defaultFilter}`;
     const {issuesSQL, countSQL} = await this.buildSQL(queryStreamId, filter, page, perPage);
 
-    const {error: e1, rows: issues} = await DB.select<IssueEntity>(issuesSQL);
-    if (e1) return {error: e1};
+    const { error: e1, rows: issues } = await DB.select<IssueEntity>(issuesSQL);
+    if (e1) return { error: e1 };
 
-    const {error: e2, row: countRow} = await DB.selectSingle<{count: number}>(countSQL);
-    if (e2) return {error: e2};
+    const { error: e2, row: countRow } = await DB.selectSingle<{
+      count: number;
+    }>(countSQL);
+    if (e2) return { error: e2 };
 
     const hasNextPage = page * perPage + perPage < countRow.count;
     await this.relations(issues);
-    return {issues, totalCount: countRow.count, hasNextPage};
+    return { issues, totalCount: countRow.count, hasNextPage };
   }
 
   async getRecentlyIssues(): Promise<{error?: Error; issues?: IssueEntity[]}> {
@@ -60,7 +74,7 @@ class _IssueRepo {
     if (error) return {error};
 
     await this.relations(issues);
-    return {issues};
+    return { issues };
   }
 
   async getTotalCount(): Promise<{error?: Error; count?: number}>{
@@ -81,19 +95,21 @@ class _IssueRepo {
           ((read_at is null) or (updated_at > read_at))
           and archived_at is null
       `);
-    if (error) return {error};
+    if (error) return { error };
 
-    return {count: row.count};
+    return { count: row.count };
   }
 
   async getUnreadCountInStream(streamId: number | null, defaultFilter: string, userFilter: string = ''): Promise<{error?: Error; count?: number}> {
     const filter = `${userFilter} ${defaultFilter}`;
     const {unreadCountSQL} = await this.buildSQL(streamId, filter, 0, 0);
 
-    const {error, row: countRow} = await DB.selectSingle<{count: number}>(unreadCountSQL);
-    if (error) return {error};
+    const { error, row: countRow } = await DB.selectSingle<{ count: number }>(
+      unreadCountSQL
+    );
+    if (error) return { error };
 
-    return {count: countRow.count};
+    return { count: countRow.count };
   }
 
   async getIncludeIds(issueIds: number[], queryStreamId: StreamEntity['queryStreamId'], defaultFilter: string, userFilter: string = ''): Promise<{error?: Error; issueIds?: number[]}> {
@@ -108,11 +124,11 @@ class _IssueRepo {
         ${queryStreamId !== null ? `and id in (select issue_id from streams_issues where stream_id = ${queryStreamId})` : ''}
         and id in (${issueIds.join(',')})
     `;
-    const {error, rows} = await DB.select<{id: number}>(sql);
-    if (error) return {error};
+    const { error, rows } = await DB.select<{ id: number }>(sql);
+    if (error) return { error };
 
-    const includedIssueIds = rows.map(row => row.id);
-    return {issueIds: includedIssueIds};
+    const includedIssueIds = rows.map((row) => row.id);
+    return { issueIds: includedIssueIds };
   }
 
   isRead(issue: IssueEntity): boolean {
@@ -125,9 +141,9 @@ class _IssueRepo {
     const loginName = UserPrefRepo.getUser().login;
     const now = DateUtil.localToUTCString(new Date());
     for (const issue of issues) {
-      const {repo, user} = GitHubUtil.getInfo(issue.url);
+      const { repo, user } = GitHubUtil.getInfo(issue.url);
       const res = await this.getIssue(issue.id);
-      if (res.error) return {error: res.error};
+      if (res.error) return { error: res.error };
       const currentIssue = res.issue;
 
       let readAt = null;
@@ -148,7 +164,7 @@ class _IssueRepo {
       const params = [
         issue.id,
         issue.node_id,
-        issue.pull_request ? 'pr' : 'issue',
+        issue.pull_request ? "pr" : "issue",
         issue.title,
         issue.created_at,
         issue.updated_at,
@@ -176,11 +192,12 @@ class _IssueRepo {
         issue.last_timeline_at || currentIssue?.last_timeline_at,
         issue.html_url,
         issue.body,
-        JSON.stringify(issue)
+        JSON.stringify(issue),
       ];
 
       if (currentIssue) {
-        const {error} = await DB.exec(`
+        const { error } = await DB.exec(
+          `
           update
             issues
           set
@@ -217,12 +234,16 @@ class _IssueRepo {
             value = ?
           where
             id = ${issue.id}
-        `, params);
+        `,
+          params
+        );
 
-        if (error) return {error};
-        if (issue.updated_at > currentIssue.updated_at) updatedIds.push(issue.id);
+        if (error) return { error };
+        if (issue.updated_at > currentIssue.updated_at)
+          updatedIds.push(issue.id);
       } else {
-        const {error} = await DB.exec(`
+        const { error } = await DB.exec(
+          `
           insert into
             issues
             (
@@ -262,23 +283,25 @@ class _IssueRepo {
             (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, params);
 
-        if (error) return {error};
+        if (error) return { error };
         updatedIds.push(issue.id);
       }
     }
 
     // limit max records
     const max = UserPrefRepo.getPref().database.max;
-    await DB.exec(`delete from issues where id in (select id from issues order by updated_at desc limit ${max}, 1000)`);
+    await DB.exec(
+      `delete from issues where id in (select id from issues order by updated_at desc limit ${max}, 1000)`
+    );
 
     // create stream-issue
-    const issueIds = issues.map(issue => issue.id);
+    const issueIds = issues.map((issue) => issue.id);
     const res = await this.getIssues(issueIds);
-    if (res.error) return {error: res.error};
-    const {error} = await StreamIssueRepo.createBulk(streamId, res.issues);
-    if (error) return {error};
+    if (res.error) return { error: res.error };
+    const { error } = await StreamIssueRepo.createBulk(streamId, res.issues);
+    if (error) return { error };
 
-    return {updatedIssueIds: updatedIds};
+    return { updatedIssueIds: updatedIds };
   }
 
   async updateWithV4(v4Issues: RemoteGitHubV4IssueEntity[]): Promise<{error?: Error}> {
@@ -305,10 +328,11 @@ class _IssueRepo {
         v3Issue.projects?.length ? v3Issue.projects.map(project => `<<<<${project.column}>>>>`).join('') : null, // hack: project_columns format
         v3Issue.last_timeline_user || currentIssue?.last_timeline_user,
         v3Issue.last_timeline_at || currentIssue?.last_timeline_at,
-        JSON.stringify(v3Issue)
+        JSON.stringify(v3Issue),
       ];
 
-      const {error} = await DB.exec(`
+      const { error } = await DB.exec(
+        `
           update
             issues
           set
@@ -326,8 +350,10 @@ class _IssueRepo {
             value = ?
           where
             id = ${v3Issue.id}
-        `, params);
-      if (error) return {error};
+        `,
+        params
+      );
+      if (error) return { error };
     }
 
     return {};
@@ -340,23 +366,25 @@ class _IssueRepo {
         `update issues set read_at = ?, prev_read_at = read_at, read_body = body, prev_read_body = read_body where id = ?`,
         [readAt, issueId]
       );
-      if (error) return {error};
+      if (error) return { error };
     } else {
-      const {error: e1, issue: currentIssue} = await this.getIssue(issueId);
-      if (e1) return {error: e1};
+      const { error: e1, issue: currentIssue } = await this.getIssue(issueId);
+      if (e1) return { error: e1 };
 
       // prev_read_atをnullではなくupdated_atの直前にすることで、すべてのコメントが未読とならないようにする
       const currentUpdatedAt = new Date(currentIssue.updated_at);
-      const prevReadAt = DateUtil.localToUTCString(new Date(currentUpdatedAt.getTime() - 1000));
+      const prevReadAt = DateUtil.localToUTCString(
+        new Date(currentUpdatedAt.getTime() - 1000)
+      );
 
       const {error} = await DB.exec(
         `update issues set read_at = prev_read_at, prev_read_at = ?, unread_at = ?, read_body = prev_read_body, prev_read_body = null where id = ?`,
         [prevReadAt, DateUtil.localToUTCString(new Date()), issueId]
       );
-      if (error) return {error};
+      if (error) return { error };
 
-      const {error: e2, issue} = await this.getIssue(issueId);
-      if (e2) return {error: e2};
+      const { error: e2, issue } = await this.getIssue(issueId);
+      if (e2) return { error: e2 };
       if (this.isRead(issue)) {
         await DB.exec(`update issues set read_at = prev_read_at, prev_read_at = null where id = ?`, [issueId]);
       }
@@ -367,7 +395,10 @@ class _IssueRepo {
     return {issue};
   }
 
-  async updateReads(issueIds: number[], date: Date): Promise<{error?: Error; issues?: IssueEntity[]}> {
+  async updateReads(
+    issueIds: number[],
+    date: Date
+  ): Promise<{ error?: Error; issues?: IssueEntity[] }> {
     const readAt = DateUtil.localToUTCString(date);
     const {error} = await DB.exec(`
       update
@@ -410,46 +441,70 @@ class _IssueRepo {
     return {};
   }
 
-  async updateMark(issueId: number, date: Date): Promise<{error?: Error; issue?: IssueEntity}> {
+  async updateMark(
+    issueId: number,
+    date: Date
+  ): Promise<{ error?: Error; issue?: IssueEntity }> {
     if (date) {
       const markedAt = DateUtil.localToUTCString(date);
-      const {error} = await DB.exec('update issues set marked_at = ? where id = ?', [markedAt, issueId]);
-      if (error) return {error};
+      const { error } = await DB.exec(
+        "update issues set marked_at = ? where id = ?",
+        [markedAt, issueId]
+      );
+      if (error) return { error };
     } else {
-      const {error} = await DB.exec('update issues set marked_at = null where id = ?', [issueId]);
-      if (error) return {error};
+      const { error } = await DB.exec(
+        "update issues set marked_at = null where id = ?",
+        [issueId]
+      );
+      if (error) return { error };
     }
 
-    const {error, issue} = await this.getIssue(issueId);
-    if (error) return {error};
+    const { error, issue } = await this.getIssue(issueId);
+    if (error) return { error };
 
-    return {issue};
+    return { issue };
   }
 
-  async updateArchive(issueId: number, date: Date): Promise<{error?: Error; issue?: IssueEntity}> {
+  async updateArchive(
+    issueId: number,
+    date: Date
+  ): Promise<{ error?: Error; issue?: IssueEntity }> {
     if (date) {
       const archivedAt = DateUtil.localToUTCString(date);
-      const {error} = await DB.exec('update issues set archived_at = ? where id = ?', [archivedAt, issueId]);
-      if (error) return {error};
+      const { error } = await DB.exec(
+        "update issues set archived_at = ? where id = ?",
+        [archivedAt, issueId]
+      );
+      if (error) return { error };
     } else {
-      const {error} = await DB.exec('update issues set archived_at = null where id = ?', [issueId]);
-      if (error) return {error};
+      const { error } = await DB.exec(
+        "update issues set archived_at = null where id = ?",
+        [issueId]
+      );
+      if (error) return { error };
     }
 
-    const {error, issue} = await this.getIssue(issueId);
-    if (error) return {error};
+    const { error, issue } = await this.getIssue(issueId);
+    if (error) return { error };
 
-    return {issue};
+    return { issue };
   }
 
-  async updateMerged(issueId: number, mergedAt: string): Promise<{error?: Error; issue?: IssueEntity}> {
-    const {error: e1} = await DB.exec('update issues set merged_at = ? where id = ?', [mergedAt, issueId]);
-    if (e1) return {error: e1};
+  async updateMerged(
+    issueId: number,
+    mergedAt: string
+  ): Promise<{ error?: Error; issue?: IssueEntity }> {
+    const { error: e1 } = await DB.exec(
+      "update issues set merged_at = ? where id = ?",
+      [mergedAt, issueId]
+    );
+    if (e1) return { error: e1 };
 
-    const {error: e2, issue} = await this.getIssue(issueId);
-    if (e2) return {error: e2};
+    const { error: e2, issue } = await this.getIssue(issueId);
+    if (e2) return { error: e2 };
 
-    return {issue};
+    return { issue };
   }
 
   private async buildSQL(streamId: number, filter: string, page: number, perPage: number): Promise<{issuesSQL: string; countSQL: string; unreadCountSQL: string}> {
@@ -481,7 +536,7 @@ class _IssueRepo {
       where
         ${where}
       order by
-        ${sortSQL ? sortSQL : 'updated_at desc'}
+        ${sortSQL ? sortSQL : "updated_at desc"}
       limit
         ${page * perPage}, ${perPage}
     `;
@@ -510,12 +565,20 @@ class _IssueRepo {
     `;
   }
 
-  async getAllRepositories(): Promise<{error?: Error; repositories?: RepositoryEntity[]}> {
-    const {error, rows} = await DB.select<{repo: string}>('select repo from issues group by repo order by count(1) desc;');
-    if (error) return {error};
+  async getAllRepositories(): Promise<{
+    error?: Error;
+    repositories?: RepositoryEntity[];
+  }> {
+    const { error, rows } = await DB.select<{ repo: string }>(
+      "select repo from issues group by repo order by count(1) desc;"
+    );
+    if (error) return { error };
 
-    const repositories = rows.map((row, index) => ({id: index, fullName: row.repo}));
-    return {repositories};
+    const repositories = rows.map((row, index) => ({
+      id: index,
+      fullName: row.repo,
+    }));
+    return { repositories };
   }
 }
 

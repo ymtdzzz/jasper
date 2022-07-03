@@ -18,12 +18,12 @@ iconutil -c icns ./misc/logo/jasper.iconset --output ./misc/logo/jasper.icns
 
 # electron v6.0.7から厳密にすべてのnativeコードにcodesignが必要になった
 # asar化まえにcodesignする必要があるので、ここで実行する
-codesign \
--s "Developer ID Application: Ryo Maruyama (G3Z4F76FBZ)" \
--f \
---options runtime \
---entitlements ./misc/plist/notarization.plist \
-./out/package/node_modules/sqlite3/lib/binding/napi-v3-darwin-$ARCH/node_sqlite3.node
+# codesign \
+# -s "Developer ID Application: Yosuke Matsuda (ZKHVP74ZND)" \
+# -f \
+# --options runtime \
+# --entitlements ./misc/plist/notarization.plist \
+# ./out/package/node_modules/sqlite3/lib/binding/napi-v6-darwin-unknown-$ARCH/node_sqlite3.node
 
 # build app with electron-packager
 VERSION=$(node -e 'console.log(require("./package.json").version)')
@@ -48,8 +48,11 @@ mkdir -p ./out/mac
 mv ./out/build/Jasper-darwin-$ARCH/Jasper.app ./out/mac/
 
 ## team id
-sed "s/^  <\/dict>/<key>ElectronTeamID<\/key><string>G3Z4F76FBZ<\/string><\/dict>/" ./out/mac/Jasper.app/Contents/Info.plist > ./out/mac/Jasper.app/Contents/Info.plist.tmp
-mv ./out/mac/Jasper.app/Contents/Info.plist.tmp ./out/mac/Jasper.app/Contents/Info.plist
+# sed "s/^  <\/dict>/<key>ElectronTeamID<\/key><string>G3Z4F76FBZ<\/string><\/dict>/" ./out/mac/Jasper.app/Contents/Info.plist > ./out/mac/Jasper.app/Contents/Info.plist.tmp
+# mv ./out/mac/Jasper.app/Contents/Info.plist.tmp ./out/mac/Jasper.app/Contents/Info.plist
 
 # code sign
-./script/mac/codesign-developer.sh
+# ./script/mac/codesign-developer.sh
+
+# rename with architecture
+mv ./out/mac ./out/mac-$ARCH
